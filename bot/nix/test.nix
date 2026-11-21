@@ -17,7 +17,7 @@
       # for example with sops-nix or agenix.
       environment.etc."shoddybot/master-key".text = "dGVzdC1tYXN0ZXIta2V5LTAxMjM0NTY3ODlhYmNkZWY=";
 
-      services.postgresql.package = pkgs.postgresql_18;
+      services.postgresql.package = pkgs.postgresql_17;
 
       services.shoddybot = {
         enable = true;

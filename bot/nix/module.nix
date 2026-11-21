@@ -243,8 +243,8 @@ in
       }
       {
         assertion =
-          cfg.database.createLocally -> lib.versionAtLeast config.services.postgresql.package.version "18";
-        message = "services.shoddybot needs PostgreSQL 18 or later. Set services.postgresql.package = pkgs.postgresql_18 (migrate any existing cluster first).";
+          cfg.database.createLocally -> lib.versionAtLeast config.services.postgresql.package.version "17";
+        message = "services.shoddybot needs PostgreSQL 17 or later. Set services.postgresql.package = pkgs.postgresql_17 (migrate any existing cluster first).";
       }
     ];
 

@@ -132,7 +132,7 @@ terminates TLS and sets `X-Forwarded-Proto`.
       modules = [
         shoddybot.nixosModules.default
         ({ pkgs, ... }: {
-          services.postgresql.package = pkgs.postgresql_18;
+          services.postgresql.package = pkgs.postgresql_17;
           services.shoddybot = {
             enable = true;
             # Outside the Nix store, for example from sops-nix or agenix.

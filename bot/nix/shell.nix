@@ -7,7 +7,7 @@
   mkShell,
   beamPackages,
   esbuild,
-  postgresql_18,
+  postgresql_17,
   inotify-tools,
   nixfmt,
 }:
@@ -18,7 +18,7 @@ mkShell {
     beamPackages.elixir
     beamPackages.elixir-ls
     esbuild
-    postgresql_18
+    postgresql_17
     nixfmt
   ]
   # Phoenix's live reloader watches files with inotify on Linux.

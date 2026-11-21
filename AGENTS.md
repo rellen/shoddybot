@@ -48,7 +48,7 @@ directories.
 | --- | --- |
 | Elixir | 1.20 |
 | Erlang/OTP | 29 |
-| PostgreSQL | 18 or later |
+| PostgreSQL | 17 or later |
 
 The root `flake.nix` pins these versions. With Nix (flakes enabled), run
 `nix develop .#bot` from the repository root for a shell with the `bot/`
