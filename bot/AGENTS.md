@@ -25,6 +25,11 @@ rules live in [`../AGENTS.md`](../AGENTS.md); this file adds the rules for
   `mix ash.codegen`. Commit them together.
 - `test/` mirrors `lib/`. `test/support/` holds `ShoddyBot.DataCase` and
   `ShoddyBotWeb.ConnCase`.
+- `rel/` customises the Mix release: `overlays/bin/migrate` and
+  `overlays/bin/server` are the production entry points, and `env.sh.eex`
+  sets release environment defaults.
+- `nix/` holds the Nix package, NixOS module, container image, dev shell and
+  VM test. The root `flake.nix` wires them up; see `../AGENTS.md`.
 
 ## Commands
 

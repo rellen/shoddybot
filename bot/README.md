@@ -64,3 +64,68 @@ Ready to run in production? Please [check our deployment guides](https://phoenix
 * Docs: https://phoenix.hexdocs.pm
 * Forum: https://elixirforum.com/c/phoenix-forum
 * Source: https://github.com/phoenixframework/phoenix
+
+## Self-hosting
+
+The repository's `flake.nix` builds the server as a Mix release, configured
+by the [environment variables](#environment-variables) above. The release's
+`bin/migrate` runs pending migrations and `bin/server` starts the server.
+Requests for any host other than `localhost` are redirected to HTTPS, so run
+it behind a reverse proxy that terminates TLS and sets `X-Forwarded-Proto`.
+
+### NixOS
+
+```nix
+{
+  inputs.shoddybot.url = "github:rellen/shoddybot";
+
+  outputs = { nixpkgs, shoddybot, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      modules = [
+        shoddybot.nixosModules.default
+        ({ pkgs, ... }: {
+          services.postgresql.package = pkgs.postgresql_18;
+          services.shoddybot = {
+            enable = true;
+            host = "shoddybot.example.com";
+            # Secret files live outside the Nix store, for example from
+            # sops-nix or agenix. Generate the first two with
+            # `openssl rand -base64 48`.
+            secretKeyBaseFile = "/run/secrets/shoddybot-secret-key-base";
+            tokenSigningSecretFile = "/run/secrets/shoddybot-token-signing-secret";
+            github = {
+              clientId = "Iv1.0123456789abcdef";
+              clientSecretFile = "/run/secrets/shoddybot-github-client-secret";
+            };
+          };
+        })
+      ];
+    };
+  };
+}
+```
+
+By default the module creates a local PostgreSQL database and role, connects
+over the Unix socket, and runs migrations before each start. Set
+`services.shoddybot.database.createLocally = false` and provide a
+`DATABASE_URL` through `database.url` or `environmentFile` to use another
+server. The server listens on port 4000 on all interfaces; open it with
+`openFirewall` only if no reverse proxy sits on the same machine.
+
+### Container
+
+```sh
+nix build .#container
+docker load < result
+docker run --rm -p 4000:4000 \
+  -e DATABASE_URL=ecto://user:pass@db.example.com/shoddybot \
+  -e SECRET_KEY_BASE="$(openssl rand -base64 48)" \
+  -e TOKEN_SIGNING_SECRET="$(openssl rand -base64 48)" \
+  -e GITHUB_CLIENT_ID=... -e GITHUB_CLIENT_SECRET=... \
+  -e PHX_HOST=shoddybot.example.com \
+  shoddybot:0.1.0
+```
+
+The entrypoint runs migrations, then starts the server. The database role
+needs to be able to create the `citext` extension, which the database owner
+can do.

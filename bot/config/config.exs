@@ -93,6 +93,9 @@ config :shoddy_bot, ShoddyBot.Mailer, adapter: Swoosh.Adapters.Local
 # app.css; there is no CSS framework or Node.js toolchain.
 config :esbuild,
   version: "0.25.4",
+  # Use an existing esbuild binary instead of downloading one when set, for
+  # example by the Nix build and dev shell.
+  path: System.get_env("MIX_ESBUILD_PATH"),
   shoddy_bot: [
     args:
       ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),

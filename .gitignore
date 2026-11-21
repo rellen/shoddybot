@@ -30,3 +30,7 @@ erl_crash.dump
 
 # Language Server temporary files.
 .elixir_ls/
+
+# Nix build output.
+result
+result-*

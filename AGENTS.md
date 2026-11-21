@@ -50,8 +50,30 @@ directories.
 | Erlang/OTP | 29 |
 | PostgreSQL | 18 or later |
 
-There is no pinned development environment in the repository yet. Install the
-versions above with your system's package manager.
+The root `flake.nix` pins these versions. With Nix (flakes enabled), run
+`nix develop .#bot` from the repository root for a shell with the `bot/`
+toolchain, or install the versions above with your system's package manager.
+
+## Nix
+
+`flake.nix` is the one piece of root tooling, because it serves every
+project. Each project keeps its Nix expressions in its own `nix/` directory
+(`bot/nix/`), and the flake wires them together:
+
+| Output | What it is |
+| --- | --- |
+| `packages.<system>.shoddybot` (`default`) | The `bot/` Mix release |
+| `packages.<linux>.container` | OCI image of the release |
+| `nixosModules.shoddybot` (`default`) | `services.shoddybot` |
+| `devShells.<system>.bot` (`default`) | Toolchain for `bot/` |
+| `checks.<system>.*` | Package and image builds, Nix formatting, and a NixOS VM test of the module |
+
+- Run `nix flake check` after changing anything under `nix/`, `flake.nix`
+  or `flake.lock`, and `nix fmt` to format Nix files.
+- When `bot/mix.lock` changes, update the `hash` of `mixFodDeps` in
+  `bot/nix/package.nix`: set it to `lib.fakeHash`, run
+  `nix build .#shoddybot`, and copy the hash Nix reports.
+- A new project adds `<project>/nix/shell.nix` and a `devShells` entry.
 
 ## Commits
 
