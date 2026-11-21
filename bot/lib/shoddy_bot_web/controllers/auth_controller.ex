@@ -11,7 +11,9 @@ defmodule ShoddyBotWeb.AuthController do
   @impl true
   def success(conn, {:magic_link, :request}, _user, _token) do
     conn
-    |> put_flash(:info, "Check your email for a sign-in link.")
+    # The same message whether or not the email has an account, so the page
+    # does not show who is invited.
+    |> put_flash(:info, "If that email address has an account, we sent it a sign-in link.")
     |> redirect(to: ~p"/sign-in")
   end
 
@@ -43,7 +45,8 @@ defmodule ShoddyBotWeb.AuthController do
 
   defp failure_message({:github, _phase}),
     do:
-      "Signing in with GitHub failed. Your GitHub account needs a verified primary email address."
+      "Signing in with GitHub failed. You can sign in only after an administrator invites your " <>
+        "email address, and your GitHub account must have that address as its verified primary email."
 
   defp failure_message(_activity), do: "Signing in failed."
 

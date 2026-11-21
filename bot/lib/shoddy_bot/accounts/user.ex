@@ -22,9 +22,13 @@ defmodule ShoddyBot.Accounts.User do
     end
 
     strategies do
+      # Sign-in is by invitation only: a user exists only after root or a
+      # tenant administrator adds them (see `ShoddyBot.Accounts.ensure_user/1`).
+      # A sign-in link request for an unknown email sends nothing, and the
+      # response does not show whether the email has an account.
       magic_link do
         identity_field :email
-        registration_enabled? true
+        registration_enabled? false
         require_interaction? true
 
         sender ShoddyBot.Accounts.User.Senders.SendMagicLinkEmail
@@ -35,6 +39,10 @@ defmodule ShoddyBot.Accounts.User do
         client_secret ShoddyBot.Secrets
         redirect_uri ShoddyBot.Secrets
         identity_resource ShoddyBot.Accounts.UserIdentity
+        registration_enabled? false
+        # GitHub's `email_verified` claim is trusted only to link a first
+        # GitHub sign-in to the invited user with the same email.
+        trust_email_verified? true
       end
 
       remember_me :remember_me
@@ -80,8 +88,9 @@ defmodule ShoddyBot.Accounts.User do
       get_by :email
     end
 
-    create :sign_in_with_magic_link do
-      description "Sign in or register a user with magic link."
+    read :sign_in_with_magic_link do
+      description "Sign in an existing user with a magic link."
+      get? true
 
       argument :token, :string do
         description "The token from the magic link that was sent to the user"
@@ -93,37 +102,24 @@ defmodule ShoddyBot.Accounts.User do
         allow_nil? true
       end
 
-      upsert? true
-      upsert_identity :unique_email
-      upsert_fields [:email]
+      prepare AshAuthentication.Strategy.MagicLink.SignInPreparation
 
-      # Uses the information from the token to create or sign in the user
-      change AshAuthentication.Strategy.MagicLink.SignInChange
-
-      change {AshAuthentication.Strategy.RememberMe.MaybeGenerateTokenChange,
-              strategy_name: :remember_me}
+      prepare {AshAuthentication.Strategy.RememberMe.MaybeGenerateTokenPreparation,
+               strategy_name: :remember_me}
 
       metadata :token, :string do
         allow_nil? false
       end
     end
 
-    create :register_with_github do
-      description "Sign in or register a user with GitHub."
+    read :sign_in_with_github do
+      description "Sign in an existing user with GitHub."
 
       argument :user_info, :map, allow_nil?: false
       argument :oauth_tokens, :map, allow_nil?: false, sensitive?: true
 
-      upsert? true
-      upsert_identity :unique_email
-      # A returning user keeps the email they registered with.
-      upsert_fields []
-
-      # Must run first: it rejects unverified GitHub emails before the
-      # identity is resolved or linked.
-      change ShoddyBot.Accounts.User.Changes.SetEmailFromGithub
-      change AshAuthentication.GenerateTokenChange
-      change AshAuthentication.Strategy.OAuth2.IdentityChange
+      prepare ShoddyBot.Accounts.User.Preparations.MatchGithubUser
+      prepare AshAuthentication.Strategy.OAuth2.SignInPreparation
     end
 
     action :request_magic_link do

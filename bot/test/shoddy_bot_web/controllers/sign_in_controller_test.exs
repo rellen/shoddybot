@@ -21,14 +21,16 @@ defmodule ShoddyBotWeb.SignInControllerTest do
   end
 
   describe "magic link sign-in" do
-    test "emails a link, and the link signs the user in", %{conn: conn} do
+    test "emails a link to an invited user, and the link signs them in", %{conn: conn} do
+      {:ok, _user} = ShoddyBot.Accounts.ensure_user("rob@example.com")
+
       conn =
         post(conn, ~p"/auth/user/magic_link/request", %{
           "user" => %{"email" => "rob@example.com"}
         })
 
       assert redirected_to(conn) == ~p"/sign-in"
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Check your email"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "we sent it a sign-in link"
 
       assert_email_sent(fn email ->
         assert email.to == [{"", "rob@example.com"}]
@@ -59,6 +61,18 @@ defmodule ShoddyBotWeb.SignInControllerTest do
       conn = post(build_conn(), ~p"/auth/user/magic_link", %{"user" => %{"token" => token}})
       assert redirected_to(conn) == ~p"/sign-in"
       assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "expired or has already been used"
+    end
+
+    test "sends nothing to an email without an account, and does not say so", %{conn: conn} do
+      conn =
+        post(conn, ~p"/auth/user/magic_link/request", %{
+          "user" => %{"email" => "stranger@example.com"}
+        })
+
+      assert redirected_to(conn) == ~p"/sign-in"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "we sent it a sign-in link"
+      assert_no_email_sent()
+      assert [] = Ash.read!(ShoddyBot.Accounts.User, authorize?: false)
     end
 
     test "a forged token does not sign in", %{conn: conn} do

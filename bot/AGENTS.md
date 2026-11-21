@@ -71,6 +71,15 @@ Development and test use PostgreSQL on `localhost` with user and password
   `bin/shoddy_bot eval` with no running node: the NixOS module and the
   container turn Erlang distribution off, so `rpc` is not available.
 
+## Sign-in
+
+- Sign-in is by invitation only. Keep `registration_enabled? false` on every
+  AshAuthentication strategy, and do not add a sign-up page or a register
+  action. Users are created only by `ShoddyBot.Accounts.ensure_user/1`,
+  after the caller is authorized (adding a member, or `create_root` from the
+  console).
+- Sign-in pages and messages must not show whether an email has an account.
+
 ## Definition of done
 
 - `mix precommit` passes with no warnings.

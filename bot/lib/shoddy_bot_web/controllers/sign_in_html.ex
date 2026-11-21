@@ -11,6 +11,10 @@ defmodule ShoddyBotWeb.SignInHTML do
     ~H"""
     <Layouts.app flash={@flash}>
       <h1>Sign in</h1>
+      <p>
+        ShoddyBot is invitation only. If you do not have an account, ask an
+        administrator to invite your email address.
+      </p>
 
       <section aria-labelledby="magic-link-heading">
         <h2 id="magic-link-heading">Email me a sign-in link</h2>

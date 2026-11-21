@@ -3,7 +3,9 @@ defmodule ShoddyBot.Tenancy.Membership do
   A user's role in one tenant: `:administrator` or `:engineer` (see
   `ShoddyBot.Authz.Roles`). A user has at most one membership per tenant.
 
-  Adding a member by email creates the user if they have not signed in yet;
+  Adding a member is how a person is invited: sign-in is by invitation only,
+  so this is the only place, apart from `ShoddyBot.Release.create_root/2`,
+  that creates users. Adding a member by email creates the user if needed;
   they can then sign in with a magic link or GitHub using that address.
   """
   use Ash.Resource,

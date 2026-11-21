@@ -74,9 +74,12 @@ development, call the same functions from `iex -S mix phx.server`.
 
 ## Signing in
 
-People sign in with a magic link sent by email, or with GitHub once root
-has set it up. Both create an account on first use. The pages are at
-`/sign-in`.
+Sign-in is by invitation only. There is no sign-up: an account exists only
+after root creates it from the console, or after root or a tenant
+administrator adds the person to a tenant. Invited people sign in with a
+magic link sent by email, or with GitHub once root has set it up. The pages
+are at `/sign-in`. A sign-in link request for an email without an account
+sends nothing, and the page does not show whether the email has an account.
 
 For GitHub sign-in, create an OAuth app in GitHub under Settings, Developer
 settings, OAuth Apps, with the authorization callback URL that the admin
@@ -84,9 +87,10 @@ page shows (the public URL followed by `/auth/user/github/callback`). Enter
 its client ID and secret on the GitHub sign-in admin page. Use one OAuth app
 per environment.
 
-GitHub sign-in only accepts accounts whose primary email is verified on
-GitHub. A GitHub sign-in whose verified email matches an existing account
-signs in to that account. ShoddyBot does not keep GitHub's OAuth access token.
+The first GitHub sign-in links the GitHub account to the invited account
+with the same email. GitHub must show that email as the verified primary
+email. After that, the GitHub account signs in to the same account, also if
+its email changes. ShoddyBot does not keep GitHub's OAuth access token.
 
 ## Tenants and roles
 
@@ -104,8 +108,9 @@ There are three roles:
   its members.
 - **Engineer** is per tenant: works in the tenant and sees its members.
 
-Members are managed at `/tenants/<slug>/members`. Adding someone by email
-creates their account if needed; they can then sign in with that address.
+Members are managed at `/tenants/<slug>/members`. Adding someone by email is
+how they are invited: it creates their account if needed, and they can then
+sign in with that address.
 
 ## Self-hosting
 
