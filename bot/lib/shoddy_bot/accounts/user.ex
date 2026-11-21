@@ -4,7 +4,7 @@ defmodule ShoddyBot.Accounts.User do
     domain: ShoddyBot.Accounts,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer],
-    extensions: [AshAuthentication]
+    extensions: [AshAuthentication, ShoddyBot.Authz.Resource]
 
   authentication do
     add_ons do
@@ -41,6 +41,14 @@ defmodule ShoddyBot.Accounts.User do
     end
   end
 
+  authz do
+    scope(:own, expr(id == ^actor(:id)))
+
+    # People who share a tenant with the actor, so members can see who else
+    # belongs.
+    scope(:colleague, expr(exists(memberships.tenant.memberships, user_id == ^actor(:id))))
+  end
+
   postgres do
     table "users"
     repo ShoddyBot.Repo
@@ -48,6 +56,17 @@ defmodule ShoddyBot.Accounts.User do
 
   actions do
     defaults [:read]
+
+    create :create_by_email do
+      description "Create a user who has not signed in yet, so they can be given roles."
+      accept [:email]
+    end
+
+    update :make_root do
+      description "Make the user root. Only reachable from the console, see ShoddyBot.Release."
+      accept []
+      change set_attribute(:root, true)
+    end
 
     read :get_by_subject do
       description "Get a user by the subject claim in a JWT"
@@ -120,6 +139,14 @@ defmodule ShoddyBot.Accounts.User do
     bypass AshAuthentication.Checks.AshAuthenticationInteraction do
       authorize_if always()
     end
+
+    policy action_type(:read) do
+      authorize_if ShoddyBot.Authz.FilterCheck
+    end
+
+    policy action_type([:create, :update, :destroy]) do
+      authorize_if ShoddyBot.Authz.Check
+    end
   end
 
   attributes do
@@ -127,6 +154,19 @@ defmodule ShoddyBot.Accounts.User do
 
     attribute :email, :ci_string do
       allow_nil? false
+      public? true
+    end
+
+    attribute :root, :boolean do
+      description "Root can do everything, install-wide. Granted from the console only."
+      allow_nil? false
+      default false
+      public? true
+    end
+  end
+
+  relationships do
+    has_many :memberships, ShoddyBot.Tenancy.Membership do
       public? true
     end
   end

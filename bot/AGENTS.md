@@ -48,11 +48,28 @@ rules live in [`../AGENTS.md`](../AGENTS.md); this file adds the rules for
 | `mix usage_rules.sync --yes` | Regenerate the dependency rules at the end of this file |
 
 Development and test use PostgreSQL on `localhost` with user and password
-`postgres` (`config/dev.exs`, `config/test.exs`). Production reads everything
-from environment variables in `config/runtime.exs` (`DATABASE_URL`,
-`SECRET_KEY_BASE`, `TOKEN_SIGNING_SECRET`, `GITHUB_CLIENT_ID`,
-`GITHUB_CLIENT_SECRET` and others). README.md lists them all; keep that list
-current when you add one.
+`postgres` (`config/dev.exs`, `config/test.exs`).
+
+## Configuration
+
+- Environment variables are only for what the app needs before it can reach
+  its database: `DATABASE_URL`, `SHODDYBOT_MASTER_KEY`, `PORT` and a few
+  database knobs, read with `Shoddy.Env` in `config/runtime.exs`. README.md
+  lists them; keep that list current. Do not add a variable for anything that
+  can live in the database.
+- Everything else an operator sets up (public URL, mail, GitHub sign-in,
+  tenants) is an Ash resource in the `ShoddyBot.Instance` or
+  `ShoddyBot.Tenancy` domains, edited by root in the admin pages. One-row
+  resources use an integer primary key fixed at 1 with a check constraint,
+  a `:current` read action, and `:configure`/`:reconfigure` actions.
+- `secret_key_base` and the token signing secret are generated on first boot
+  and stored encrypted (`ShoddyBot.Instance.Boot`, `BootSecrets`). Code that
+  needs them reads the application environment, which `Boot` fills.
+- Read config at the point of use (`ShoddyBot.Mailer`, `ShoddyBot.Secrets`),
+  so changes apply without a restart.
+- Operator tasks live in `ShoddyBot.Release` and must work from
+  `bin/shoddy_bot eval` with no running node: the NixOS module and the
+  container turn Erlang distribution off, so `rpc` is not available.
 
 ## Definition of done
 
@@ -80,9 +97,44 @@ current when you add one.
 - Use `AshPhoenix.Form` for forms backed by actions.
 - Add authorization policies to every resource that is reachable from the
   web. ShoddyBot runs deploys and holds credentials, so deny by default.
+- Authorize with `ShoddyBot.Authz`, our own scheme modelled on ash_grant (see
+  "Authorization" below), not ad hoc checks.
 - Ash's documentation is split into sub-rules, linked at the end of this file.
   Read the relevant one before using a feature (actions, relationships,
   calculations, policies and so on). Do not rely on memory of Ash 2 APIs.
+
+## Authorization
+
+`ShoddyBot.Authz` is our own permission scheme, shaped like ash_grant so a
+later move is mostly mechanical. Do not add ash_grant itself.
+
+- Roles are in `ShoddyBot.Authz.Roles` as permission strings,
+  `[!]resource:instance:action:scope` (instance is always `*` for now). Root
+  is install-wide (`User.root`). Administrator and engineer are per tenant
+  (`ShoddyBot.Tenancy.Membership`). Every signed-in user also gets the
+  `signed_in` permissions. Change roles there, in code.
+- A resource opts in with `extensions: [ShoddyBot.Authz.Resource]` and an
+  `authz` block (`resource_name`, `tenant_attribute`, `scope` filters), then
+  authorizes reads with `ShoddyBot.Authz.FilterCheck` and creates, updates and
+  destroys with `ShoddyBot.Authz.Check`.
+- A tenant role only ever reaches its own tenant: rows in its schema for
+  `multitenancy strategy :context` resources, or rows whose
+  `tenant_attribute` is its tenant for public-schema resources. A resource
+  with neither is out of reach of tenant roles. Deny wins over allow.
+- Test policies through code interfaces with real actors (see
+  `test/shoddy_bot/authz_test.exs`).
+
+## Multitenancy
+
+- Tenant data uses `multitenancy strategy :context`: one PostgreSQL schema per
+  tenant, `tenant_<slug>`, created by `ShoddyBot.Tenancy.Tenant` with
+  `manage_tenant`. Pass the tenant record as `tenant:`; `Ash.ToTenant` turns
+  it into the schema.
+- Install-wide data (users, instance settings, the tenant list, memberships)
+  lives in the `public` schema.
+- `mix ash.codegen` writes tenant migrations to `priv/repo/tenant_migrations/`.
+  `ShoddyBot.Release.migrate/0` (and so `bin/migrate`) runs them in every
+  tenant schema after the public migrations.
 
 ## Security
 
@@ -90,16 +142,20 @@ ShoddyBot holds credentials (deploy keys, API tokens) and runs commands
 against repositories and hosts. Treat every change as security-sensitive.
 
 - Mark attributes holding secrets `sensitive? true` so Ash redacts them from
-  errors and inspect output. Encrypt them at rest (for example with AshCloak)
-  rather than storing plaintext.
+  errors and inspect output, and encrypt them at rest with AshCloak and
+  `ShoddyBot.Vault` (`cloak do vault ShoddyBot.Vault ... end`). Never render a
+  stored secret back into a form: show that one is set, and treat a blank
+  field as "keep" (`ShoddyBot.Instance.Changes.KeepSecretWhenBlank`).
 - Never log, render or put secrets in error messages, telemetry metadata or
   job arguments.
 - Run external programs with `System.cmd/3` and a list of arguments. Never
   build a shell string or go through `sh -c`, and validate user-supplied
   values (repository URLs, refs, paths) before they reach a command.
-- Production secrets come only from environment variables read in
-  `config/runtime.exs`. The keys in `config/dev.exs` and `config/test.exs`
-  are for local use only.
+- The only secret that comes from the environment is the master key. The
+  keys in `config/dev.exs` and `config/test.exs` are for local use only.
+- Do not send mail through a module that does `use Swoosh.Mailer`: its
+  telemetry events carry the adapter config, credentials included. Use
+  `ShoddyBot.Mailer`.
 
 ## Phoenix 1.8 conventions
 

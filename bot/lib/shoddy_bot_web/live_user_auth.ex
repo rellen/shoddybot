@@ -29,6 +29,20 @@ defmodule ShoddyBotWeb.LiveUserAuth do
     end
   end
 
+  # Must come after :live_user_required.
+  def on_mount(:live_root_required, _params, _session, socket) do
+    case socket.assigns[:current_user] do
+      %{root: true} ->
+        {:cont, socket}
+
+      _ ->
+        {:halt,
+         socket
+         |> Phoenix.LiveView.put_flash(:error, "Only root can open the admin pages.")
+         |> Phoenix.LiveView.redirect(to: ~p"/")}
+    end
+  end
+
   def on_mount(:live_no_user, _params, _session, socket) do
     if socket.assigns[:current_user] do
       {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/")}

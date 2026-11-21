@@ -153,3 +153,32 @@
     text-underline-offset: 0.3em;
   }
 }
+
+/* <.admin_nav> in admin_components.ex */
+
+[data-admin-nav] {
+  margin-block-end: var(--space-6);
+  border-block-end: var(--border-width) solid var(--color-border);
+
+  > ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    padding: 0;
+    list-style: none;
+  }
+
+  a {
+    display: inline-block;
+    padding-block: var(--space-2);
+    text-decoration: none;
+  }
+
+  /* The current page is marked with weight and an underline, not colour alone. */
+  a[aria-current="page"] {
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-thickness: 0.15em;
+    text-underline-offset: 0.4em;
+  }
+}

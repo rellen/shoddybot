@@ -35,6 +35,8 @@ config :spark,
     "Ash.Resource": [
       section_order: [
         :authentication,
+        :authz,
+        :cloak,
         :token,
         :user_identity,
         :postgres,
@@ -60,9 +62,8 @@ config :spark,
 config :shoddy_bot,
   ecto_repos: [ShoddyBot.Repo],
   generators: [timestamp_type: :utc_datetime],
-  ash_domains: [ShoddyBot.Accounts],
-  ash_authentication: [return_error_on_invalid_magic_link_token?: true],
-  mail_from: {"ShoddyBot", "noreply@localhost"}
+  ash_domains: [ShoddyBot.Accounts, ShoddyBot.Instance, ShoddyBot.Tenancy],
+  ash_authentication: [return_error_on_invalid_magic_link_token?: true]
 
 # Configure the endpoint
 config :shoddy_bot, ShoddyBotWeb.Endpoint,
@@ -80,14 +81,9 @@ config :phoenix_live_view,
   # the attribute set on all root tags. Used for Phoenix.LiveView.ColocatedCSS.
   root_tag_attribute: "phx-r"
 
-# Configure the mailer
-#
-# By default it uses the "Local" adapter which stores the emails
-# locally. You can see the emails in your browser, at "/dev/mailbox".
-#
-# For production it's recommended to configure a different adapter
-# at the `config/runtime.exs`.
-config :shoddy_bot, ShoddyBot.Mailer, adapter: Swoosh.Adapters.Local
+# Mail goes through the provider root configures in the admin pages (see
+# ShoddyBot.Mailer). Development and test set a fallback adapter.
+config :swoosh, :api_client, Swoosh.ApiClient.Req
 
 # Configure esbuild (the version is required). It bundles both app.js and
 # app.css; there is no CSS framework or Node.js toolchain.

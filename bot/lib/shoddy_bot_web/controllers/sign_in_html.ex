@@ -29,7 +29,7 @@ defmodule ShoddyBotWeb.SignInHTML do
         </.form>
       </section>
 
-      <section aria-labelledby="github-heading">
+      <section :if={@github?} aria-labelledby="github-heading">
         <h2 id="github-heading">Use GitHub</h2>
         <p><a href={~p"/auth/user/github"}>Sign in with GitHub</a></p>
       </section>

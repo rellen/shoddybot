@@ -77,5 +77,11 @@ config :phoenix_live_view,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
 
-# Disable swoosh api client as it is only required for production adapters.
-config :swoosh, :api_client, false
+# Without a mail provider configured in the admin pages, mail lands in the
+# mailbox preview at /dev/mailbox.
+config :shoddy_bot, ShoddyBot.Mailer, adapter: Swoosh.Adapters.Local
+
+# Local-only secrets. Production generates its own on first boot and keeps
+# them in the database, encrypted with SHODDYBOT_MASTER_KEY.
+config :shoddy_bot, boot_secrets: :config
+config :shoddy_bot, ShoddyBot.Vault, key: "GGusNfdbOdAKuDxKPqRGbJxS3Ec+W61IC1bfm7OzaTo="

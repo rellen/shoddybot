@@ -82,8 +82,9 @@ project. Each project keeps its Nix expressions in its own `nix/` directory
   `bot: add repository resource`.
 - In the body, explain why the change was made. The diff already shows what
   changed.
-- Never commit secrets, credentials or `.env` files. Production configuration
-  comes from environment variables at runtime.
+- Never commit secrets, credentials or `.env` files. A deployment supplies a
+  few bootstrap environment variables (see `bot/README.md`); everything else
+  is configured in the app and stored encrypted in its database.
 
 ## License
 

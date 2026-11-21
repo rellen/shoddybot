@@ -31,6 +31,8 @@ defmodule ShoddyBotWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
 
+  attr :current_user, :map, default: nil, doc: "the signed-in user, if any"
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -39,6 +41,7 @@ defmodule ShoddyBotWeb.Layouts do
     <header>
       <nav aria-label={gettext("Main")}>
         <a href={~p"/"}>ShoddyBot</a>
+        <a :if={@current_user && @current_user.root} href={~p"/admin"}>Admin</a>
         <.theme_toggle />
       </nav>
     </header>

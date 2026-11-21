@@ -15,6 +15,17 @@ defmodule ShoddyBot.Repo do
     false
   end
 
+  @doc """
+  The schema of every tenant, for running tenant migrations. See
+  `ShoddyBot.Tenancy.Tenant`.
+  """
+  @impl true
+  def all_tenants do
+    import Ecto.Query, only: [from: 2]
+
+    all(from(t in "tenants", select: t.schema))
+  end
+
   @impl true
   def min_pg_version do
     %Version{major: 18, minor: 0, patch: 0}

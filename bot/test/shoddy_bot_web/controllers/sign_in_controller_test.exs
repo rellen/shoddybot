@@ -4,11 +4,18 @@ defmodule ShoddyBotWeb.SignInControllerTest do
   import Swoosh.TestAssertions
 
   describe "GET /sign-in" do
-    test "offers a magic link form and GitHub sign-in", %{conn: conn} do
+    test "offers a magic link form, and GitHub only once it is configured", %{conn: conn} do
       html = conn |> get(~p"/sign-in") |> html_response(200)
 
       assert html =~ ~s(action="/auth/user/magic_link/request")
       assert html =~ ~s(<label for="user_email">)
+      refute html =~ ~s(href="/auth/user/github")
+
+      ShoddyBot.Instance.configure_github_oauth_app!(%{client_id: "id", client_secret: "secret"},
+        authorize?: false
+      )
+
+      html = build_conn() |> get(~p"/sign-in") |> html_response(200)
       assert html =~ ~s(href="/auth/user/github")
     end
   end

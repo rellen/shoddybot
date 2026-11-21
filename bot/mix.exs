@@ -69,6 +69,9 @@ defmodule ShoddyBot.MixProject do
       {:picosat_elixir, "~> 0.2"},
       {:ash_authentication_phoenix, "~> 2.0"},
       {:ash_authentication, "~> 4.0"},
+      {:ash_cloak, "~> 0.5"},
+      {:cloak, "~> 1.1"},
+      {:gen_smtp, "~> 1.3"},
       {:sourceror, "~> 1.8", only: [:dev, :test]},
       {:ash_phoenix, "~> 2.0"},
       {:ash_postgres, "~> 2.0"},
@@ -91,7 +94,6 @@ defmodule ShoddyBot.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
-      {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       # Small helpers for Elixir and Phoenix code. Neither is on Hex, so mix.lock pins the
       # commit. shoddy_phoenix does not pull in shoddy, so both are listed.

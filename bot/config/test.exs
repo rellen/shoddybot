@@ -2,11 +2,6 @@ import Config
 
 config :shoddy_bot, token_signing_secret: "WEpJIUZaLAphjb91818+d66ugNP4Rl9E"
 
-config :shoddy_bot, :github,
-  client_id: "test-github-client-id",
-  client_secret: "test-github-client-secret",
-  redirect_uri: "http://localhost:4002/auth"
-
 config :ash,
   policies: [show_policy_breakdowns?: true],
   keyset_signing_secret: "9B6ZgMSaQ0gK6pW6EUpvvJyNqsAnfJSh89YHcga4JEQ",
@@ -35,8 +30,8 @@ config :shoddy_bot, ShoddyBotWeb.Endpoint,
 # In test we don't send emails
 config :shoddy_bot, ShoddyBot.Mailer, adapter: Swoosh.Adapters.Test
 
-# Disable swoosh api client as it is only required for production adapters
-config :swoosh, :api_client, false
+config :shoddy_bot, boot_secrets: :config
+config :shoddy_bot, ShoddyBot.Vault, key: "aENpb8aZGlJKGgjCRjMHZQsb26UwWrez0r9oSnsVRdw="
 
 # Print only warnings and errors during test
 config :logger, level: :warning

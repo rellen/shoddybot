@@ -35,4 +35,14 @@ defmodule ShoddyBotWeb.ConnCase do
     ShoddyBot.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
+
+  @doc "Signs `user` in on `conn`, as the sign-in flow would."
+  def log_in(conn, user) do
+    {:ok, token, _claims} = AshAuthentication.Jwt.token_for_user(user)
+    user = Ash.Resource.put_metadata(user, :token, token)
+
+    conn
+    |> Phoenix.ConnTest.init_test_session(%{})
+    |> AshAuthentication.Plug.Helpers.store_in_session(user)
+  end
 end

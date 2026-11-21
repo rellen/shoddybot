@@ -30,7 +30,6 @@ let
   localDatabaseUrl = "ecto://${cfg.database.user}@localhost/${cfg.database.name}?socket_dir=/run/postgresql";
 
   environment = {
-    PHX_HOST = cfg.host;
     PORT = toString cfg.port;
     POOL_SIZE = toString cfg.database.poolSize;
     # The release writes its generated runtime configuration here. The
@@ -40,27 +39,88 @@ let
     # is opened. Override in `environment` to attach remote shells.
     RELEASE_DISTRIBUTION = "none";
     LANG = "C.UTF-8";
-    GITHUB_CLIENT_ID = cfg.github.clientId;
   }
-  // lib.optionalAttrs (cfg.github.redirectUri != null) {
-    GITHUB_REDIRECT_URI = cfg.github.redirectUri;
-  }
-  // lib.optionalAttrs (cfg.mailFrom != null) { MAIL_FROM = cfg.mailFrom; }
   // lib.optionalAttrs (cfg.database.url != null) { DATABASE_URL = cfg.database.url; }
   // cfg.environment;
 
-  # Reads secrets from systemd credentials into the environment the release
-  # expects, then runs the given release command.
+  # Reads the master key from its systemd credential into the environment the
+  # release expects, then runs the given release command.
   withSecrets = pkgs.writeShellScript "shoddybot-with-secrets" ''
     set -euo pipefail
-    SECRET_KEY_BASE="$(< "$CREDENTIALS_DIRECTORY/secret_key_base")"
-    TOKEN_SIGNING_SECRET="$(< "$CREDENTIALS_DIRECTORY/token_signing_secret")"
-    GITHUB_CLIENT_SECRET="$(< "$CREDENTIALS_DIRECTORY/github_client_secret")"
-    export SECRET_KEY_BASE TOKEN_SIGNING_SECRET GITHUB_CLIENT_SECRET
+    SHODDYBOT_MASTER_KEY="$(< "$CREDENTIALS_DIRECTORY/master_key")"
+    export SHODDYBOT_MASTER_KEY
     exec "$@"
+  '';
+
+  # `shoddybot-eval EXPR` runs an Elixir expression with
+  # `bin/shoddy_bot eval`, as the service user, with the service's
+  # environment and master key, in a transient systemd unit. Erlang
+  # distribution is off, so `rpc` cannot reach the running server; `eval`
+  # starts only what the expression needs. Used to onboard root.
+  evalEnvironment = environment // {
+    RELEASE_TMP = "/run/shoddybot-eval";
+  };
+
+  shoddybotEval = pkgs.writeShellScriptBin "shoddybot-eval" ''
+    set -euo pipefail
+    if [ "$#" -ne 1 ]; then
+      echo "usage: shoddybot-eval 'ShoddyBot.Release.create_root(\"you@example.com\", public_url: \"https://shoddybot.example.com\")'" >&2
+      exit 64
+    fi
+    exec ${config.systemd.package}/bin/systemd-run --quiet --wait --pipe --collect \
+      --uid=${cfg.database.user} --gid=${cfg.database.user} \
+      --property=LoadCredential=master_key:${cfg.masterKeyFile} \
+      --property=RuntimeDirectory=shoddybot-eval \
+      --property=WorkingDirectory=/var/lib/shoddybot \
+      ${
+        lib.optionalString (cfg.environmentFile != null) "--property=EnvironmentFile=${cfg.environmentFile}"
+      } \
+      ${
+        lib.concatStringsSep " " (
+          lib.mapAttrsToList (name: value: lib.escapeShellArg "--setenv=${name}=${value}") evalEnvironment
+        )
+      } \
+      -- ${withSecrets} ${cfg.package}/bin/shoddy_bot eval "$1"
   '';
 in
 {
+  # These moved into the database, where root manages them in the admin pages.
+  imports =
+    map
+      (
+        path:
+        lib.mkRemovedOptionModule
+          (
+            [
+              "services"
+              "shoddybot"
+            ]
+            ++ path
+          )
+          ''
+            ShoddyBot now keeps this in its database: sign in as root and set it in the
+            admin pages. The service only needs services.shoddybot.masterKeyFile.
+          ''
+      )
+      [
+        [ "host" ]
+        [ "secretKeyBaseFile" ]
+        [ "tokenSigningSecretFile" ]
+        [
+          "github"
+          "clientId"
+        ]
+        [
+          "github"
+          "clientSecretFile"
+        ]
+        [
+          "github"
+          "redirectUri"
+        ]
+        [ "mailFrom" ]
+      ];
+
   options.services.shoddybot = {
     enable = mkEnableOption "the ShoddyBot server";
 
@@ -69,17 +129,6 @@ in
       default = self.packages.${pkgs.stdenv.hostPlatform.system}.shoddybot;
       defaultText = literalExpression "shoddybot.packages.\${pkgs.stdenv.hostPlatform.system}.shoddybot";
       description = "The ShoddyBot release to run.";
-    };
-
-    host = mkOption {
-      type = types.str;
-      example = "shoddybot.example.com";
-      description = ''
-        Public host name ShoddyBot is served from, used to build URLs. The
-        server expects to sit behind a reverse proxy that terminates TLS and
-        sets `X-Forwarded-Proto`; requests for any other host than
-        `localhost` are redirected to HTTPS.
-      '';
     };
 
     port = mkOption {
@@ -94,57 +143,23 @@ in
       description = "Whether to open {option}`services.shoddybot.port` in the firewall.";
     };
 
-    secretKeyBaseFile = mkOption {
+    masterKeyFile = mkOption {
       type = secretPath;
-      example = "/run/secrets/shoddybot-secret-key-base";
+      example = "/run/secrets/shoddybot-master-key";
       description = ''
-        File holding the secret used to sign and encrypt cookies and
-        pagination keys. Generate one with `openssl rand -base64 48`. It is
-        passed to the service as a systemd credential, so it can be readable
-        by root only, and it never enters the Nix store.
+        File holding the master key: 32 random bytes, Base64-encoded, from
+        `openssl rand -base64 32`. It encrypts every secret ShoddyBot stores
+        in its database, including the ones it generates on first boot, so
+        back it up apart from the database: without it they cannot be read.
+        It is passed to the service as a systemd credential, so it can be
+        readable by root only, and it never enters the Nix store.
+
+        Everything else (the public URL, mail, GitHub sign-in, tenants) is
+        configured by root in the admin pages. Onboard root with
+        `shoddybot-eval`, which this module installs:
+
+            shoddybot-eval 'ShoddyBot.Release.create_root("you@example.com", public_url: "https://shoddybot.example.com")'
       '';
-    };
-
-    tokenSigningSecretFile = mkOption {
-      type = secretPath;
-      example = "/run/secrets/shoddybot-token-signing-secret";
-      description = ''
-        File holding the secret that signs sign-in tokens. Generate one with
-        `openssl rand -base64 48`. Passed as a systemd credential, like
-        {option}`services.shoddybot.secretKeyBaseFile`.
-      '';
-    };
-
-    github = {
-      clientId = mkOption {
-        type = types.str;
-        description = "Client ID of the GitHub OAuth app used for sign-in.";
-      };
-
-      clientSecretFile = mkOption {
-        type = secretPath;
-        example = "/run/secrets/shoddybot-github-client-secret";
-        description = ''
-          File holding the client secret of the GitHub OAuth app. Passed as a
-          systemd credential.
-        '';
-      };
-
-      redirectUri = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = ''
-          Base URL of the auth routes registered with the GitHub OAuth app.
-          `null` uses `https://<host>/auth`.
-        '';
-      };
-    };
-
-    mailFrom = mkOption {
-      type = types.nullOr types.str;
-      default = null;
-      example = "shoddybot@example.com";
-      description = "Sender address for sign-in emails. `null` uses `noreply@<host>`.";
     };
 
     environmentFile = mkOption {
@@ -253,6 +268,8 @@ in
 
     networking.firewall.allowedTCPPorts = optional cfg.openFirewall cfg.port;
 
+    environment.systemPackages = [ shoddybotEval ];
+
     systemd.services.shoddybot = {
       description = "ShoddyBot server";
       wantedBy = [ "multi-user.target" ];
@@ -270,11 +287,7 @@ in
         ExecStart = "${withSecrets} ${cfg.package}/bin/server";
         ExecStop = "${withSecrets} ${cfg.package}/bin/shoddy_bot stop";
         EnvironmentFile = mkIf (cfg.environmentFile != null) cfg.environmentFile;
-        LoadCredential = [
-          "secret_key_base:${cfg.secretKeyBaseFile}"
-          "token_signing_secret:${cfg.tokenSigningSecretFile}"
-          "github_client_secret:${cfg.github.clientSecretFile}"
-        ];
+        LoadCredential = [ "master_key:${cfg.masterKeyFile}" ];
         Restart = "on-failure";
         RestartSec = 5;
 

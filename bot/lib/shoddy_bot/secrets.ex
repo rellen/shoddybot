@@ -1,31 +1,51 @@
 defmodule ShoddyBot.Secrets do
   @moduledoc """
-  Supplies authentication secrets from the application environment.
+  Supplies authentication secrets to AshAuthentication.
 
-  The values are set in `config/runtime.exs` from environment variables
-  (`TOKEN_SIGNING_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`,
-  `GITHUB_REDIRECT_URI`). `config/dev.exs` and `config/test.exs` hold local
-  values for the token signing secret only.
+  The token signing secret comes from the application environment, where
+  `ShoddyBot.Instance.Boot` puts the generated one in production
+  (`config/dev.exs` and `config/test.exs` hold local values).
+
+  The GitHub client ID and secret come from `ShoddyBot.Instance.GitHubOAuthApp`,
+  read on each use so root can change them without a restart. The redirect
+  URI is the public URL followed by `/auth`.
   """
   use AshAuthentication.Secret
 
+  import Shoddy.Strings, only: [is_non_empty_string: 1]
+
   alias ShoddyBot.Accounts.User
+  alias ShoddyBot.Instance
 
   def secret_for([:authentication, :tokens, :signing_secret], User, _opts, _context) do
     Application.fetch_env(:shoddy_bot, :token_signing_secret)
   end
 
-  def secret_for([:authentication, :strategies, :github, key], User, _opts, _context)
-      when key in [:client_id, :client_secret, :redirect_uri] do
-    github_config(key)
+  def secret_for([:authentication, :strategies, :github, :redirect_uri], User, _opts, _context) do
+    {:ok, Instance.url("/auth")}
   end
 
-  defp github_config(key) do
-    with {:ok, config} <- Application.fetch_env(:shoddy_bot, :github),
-         value when is_binary(value) and value != "" <- Keyword.get(config, key) do
+  def secret_for([:authentication, :strategies, :github, key], User, _opts, _context)
+      when key in [:client_id, :client_secret] do
+    with {:ok, %Instance.GitHubOAuthApp{} = app} <- github_app(),
+         value when is_non_empty_string(value) <- Map.get(app, key) do
       {:ok, value}
     else
       _ -> :error
     end
+  end
+
+  @doc "Whether GitHub sign-in is configured, so the sign-in page can offer it."
+  @spec github_configured?() :: boolean()
+  def github_configured? do
+    match?({:ok, %Instance.GitHubOAuthApp{}}, github_app())
+  end
+
+  defp github_app do
+    Instance.get_github_oauth_app(
+      authorize?: false,
+      load: [:client_secret],
+      not_found_error?: false
+    )
   end
 end

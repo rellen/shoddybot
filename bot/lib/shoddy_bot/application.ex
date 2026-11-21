@@ -10,7 +10,10 @@ defmodule ShoddyBot.Application do
     children = [
       ShoddyBotWeb.Telemetry,
       ShoddyBot.Repo,
-      {DNSCluster, query: Application.get_env(:shoddy_bot, :dns_cluster_query) || :ignore},
+      ShoddyBot.Vault,
+      # Loads (or on first boot, generates) secret_key_base and the token
+      # signing secret, so it must start before the endpoint.
+      ShoddyBot.Instance.Boot,
       {Phoenix.PubSub, name: ShoddyBot.PubSub},
       # Start a worker by calling: ShoddyBot.Worker.start_link(arg)
       # {ShoddyBot.Worker, arg},

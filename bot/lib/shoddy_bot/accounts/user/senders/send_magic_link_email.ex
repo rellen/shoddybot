@@ -21,10 +21,9 @@ defmodule ShoddyBot.Accounts.User.Senders.SendMagicLinkEmail do
         email -> email
       end
 
-    link = url(~p"/magic_link/#{token}")
+    link = ShoddyBot.Instance.url(~p"/magic_link/#{token}")
 
     new()
-    |> from(Application.fetch_env!(:shoddy_bot, :mail_from))
     |> to(to_string(email))
     |> subject("Your ShoddyBot sign-in link")
     |> text_body("""

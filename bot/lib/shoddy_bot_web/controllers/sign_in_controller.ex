@@ -12,7 +12,10 @@ defmodule ShoddyBotWeb.SignInController do
     if conn.assigns[:current_user] do
       redirect(conn, to: ~p"/")
     else
-      render(conn, :new, page_title: "Sign in")
+      render(conn, :new,
+        page_title: "Sign in",
+        github?: ShoddyBot.Secrets.github_configured?()
+      )
     end
   end
 
