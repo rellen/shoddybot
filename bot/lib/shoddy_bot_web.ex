@@ -52,13 +52,11 @@ defmodule ShoddyBotWeb do
     quote do
       use Phoenix.LiveView
 
-      unquote(html_helpers())
-    end
-  end
+      # Warns at compile time for an event name written with `event("...")`
+      # that has no `handle_event` clause.
+      use ShoddyPhoenix.LiveView.Events
 
-  def live_component do
-    quote do
-      use Phoenix.LiveComponent
+      alias ShoddyPhoenix.LiveView
 
       unquote(html_helpers())
     end
@@ -86,6 +84,8 @@ defmodule ShoddyBotWeb do
       import Phoenix.HTML
       # Core UI components
       import ShoddyBotWeb.CoreComponents
+      # Control flow components: <.choose>, <.switch>, <.result>, <.wrap_if>, <.each>
+      import ShoddyPhoenix.ControlFlow
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

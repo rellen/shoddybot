@@ -14,6 +14,8 @@ defmodule ShoddyBot.Accounts.User.Changes.SetEmailFromGithub do
   """
   use Ash.Resource.Change
 
+  import Shoddy.Strings, only: [is_non_empty_string: 1]
+
   alias Ash.Changeset
 
   @impl true
@@ -23,7 +25,7 @@ defmodule ShoddyBot.Accounts.User.Changes.SetEmailFromGithub do
     changeset = Changeset.set_argument(changeset, :oauth_tokens, %{})
 
     case user_info do
-      %{"email" => email, "email_verified" => true} when is_binary(email) and email != "" ->
+      %{"email" => email, "email_verified" => true} when is_non_empty_string(email) ->
         Changeset.change_attribute(changeset, :email, email)
 
       _ ->

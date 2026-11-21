@@ -119,6 +119,31 @@ against repositories and hosts. Treat every change as security-sensitive.
 - Use `Req` for HTTP requests. Do not add `:httpoison`, `:tesla` or use
   `:httpc`.
 
+## Shoddy and ShoddyPhoenix
+
+`bot/` depends on [Shoddy](https://github.com/rellen/shoddy) and
+[ShoddyPhoenix](https://github.com/rellen/shoddy_phoenix), small helper
+libraries from the same author as ShoddyBot. Reach for them before writing a
+helper of your own; their usage rules are at the end of this file.
+
+- Read environment variables in `config/runtime.exs` with `Shoddy.Env`,
+  not `System.get_env/1` plus a hand-written `raise` or `String.to_integer/1`.
+- Use `Shoddy.Strings.non_blank/1` or the `is_non_empty_string/1` guard
+  instead of `is_binary(v) and v != ""` checks, and `Shoddy.Parse` for user
+  input.
+- Every template has `ShoddyPhoenix.ControlFlow` imported (`<.choose>`,
+  `<.switch>`, `<.result>`, `<.wrap_if>`, `<.each>`). Prefer them to `cond`
+  and `case` blocks in HEEx.
+- Every LiveView has `use ShoddyPhoenix.LiveView.Events` and
+  `alias ShoddyPhoenix.LiveView`. Write event names as `event("save")` so a
+  typo fails `mix compile --warnings-as-errors`, and subscribe with
+  `LiveView.when_connected/2`.
+- Use `Shoddy.Tests` (`eventually/2`, `put_app_env/3`) in tests instead of
+  `Process.sleep/1` and hand-restored config.
+- When either library has a bug or lacks something we need, do not work
+  around it silently in `bot/`. Write up the fix or enhancement for Rob, and
+  do not push to or open issues on those repositories without his approval.
+
 ## LiveView composition
 
 - Never use LiveComponents (`Phoenix.LiveComponent`, `<.live_component>`).
@@ -134,7 +159,11 @@ against repositories and hosts. Treat every change as security-sensitive.
      `:handle_info`, `:handle_params`), usually from an `on_mount` callback.
      Namespace the widget's assigns and event names so several widgets can
      share one LiveView, and return `{:cont, socket}` for events that are not
-     the widget's.
+     the widget's. Build widgets with `ShoddyPhoenix.LiveView.Widgets`
+     (`route_events/4`, `route_instance_events/5`), attach other hooks with
+     `ShoddyPhoenix.LiveView.put_hook/4`, and share PubSub topics between
+     widgets with `ShoddyPhoenix.LiveView.Subscriptions`. The guide is
+     `deps/shoddy_phoenix/docs/how-to/build-a-widget-with-lifecycle-hooks.md`.
   3. **Nested LiveViews** (`live_render/3`), only when the piece needs its
      own process: independent failure, its own PubSub subscriptions, or
      heavy work that must not block the parent.
@@ -664,6 +693,359 @@ And **never** do this:
 - **Never** use `<.form let={f} ...>` in the template, instead **always use `<.form for={@form} ...>`**, then drive all form references from the form assign as in `@form[:field]`. The UI should **always** be driven by a `to_form/2` assigned in the LiveView module that is derived from a changeset
 
 <!-- phoenix:liveview-end -->
+<!-- shoddy-start -->
+## shoddy usage
+_Small functions for tasks that occur frequently in Elixir code._
+
+# Usage rules for Shoddy
+
+Shoddy is a library of small functions for tasks that occur frequently in
+Elixir code. These rules tell an AI agent how to use the library correctly.
+The documentation of each module gives the full description.
+
+## General rules
+
+- Use the standard library if it has a function for the task. Use Shoddy
+  for a task that the standard library does not do in one call.
+- The module names are in the plural: `Shoddy.Maps`, `Shoddy.Keywords`,
+  `Shoddy.MapSets`, `Shoddy.Lists`, `Shoddy.Strings`, `Shoddy.DateTimes`.
+  No module `Shoddy.Map` or `Shoddy.String` exists.
+- The first argument is the value that the function operates on. Thus each
+  function can be a step of a pipeline.
+- A function raises `FunctionClauseError` for an argument of the wrong
+  type, and `ArgumentError` for a wrong option. Do not rescue these errors.
+  Correct the call.
+- The functions compare with `===/2`. Thus `1` and `1.0` are two different
+  keys.
+
+## The suffix of a name
+
+- `_if` tests a value that the function also uses. The value must be
+  truthy, which means not `nil` and not `false`. Zero, `""` and `[]` are
+  truthy.
+- `_when` tests a condition that is a separate argument.
+- `_present` tests that a value is not `nil`. Thus it keeps `false`.
+
+Examples of these rules:
+
+- `Shoddy.Maps.put_if/3` does not put `false`. For a field that can be
+  `false`, use `Shoddy.Maps.put_present/3`.
+- `Shoddy.then_if/3` takes a predicate, which is a function.
+  `Shoddy.then_when/3` takes a condition that is a value. Each one raises
+  `FunctionClauseError` for the other form.
+- To treat `""` as no value, change it to `nil` first with
+  `Shoddy.Strings.presence/1`.
+
+## Results
+
+- `Shoddy.Result` accepts `{:ok, value}`, `:ok`, `{:error, reason}` and
+  `:error`. It does not accept a tuple of three elements. Give such a tuple
+  to `Shoddy.Result.normalize/1` first.
+- Use `Shoddy.Result.map_ok/2` for a function that returns a plain value.
+  Use `Shoddy.Result.then_ok/2` for a function that returns a result.
+- `Shoddy.Result.attempt/2` needs the option `:rescue` or the option
+  `:catch`. It does not rescue each exception by default.
+- The functions of `Shoddy.Parse` return `{:ok, value}` or
+  `{:error, reason}`, and they examine the full text. Thus `"12px"` is an
+  error. `Shoddy.Parse.integer!/2` and `Shoddy.Parse.float!/2` raise.
+- The functions of `Shoddy.Env` raise an exception for an absent variable
+  or a wrong value. Use them in `config/runtime.exs`, and give the option
+  `:default` for an optional variable.
+
+## Functions that an agent can use incorrectly
+
+- `Shoddy.Tagging.reply/2` and `Shoddy.Tagging.stop/2` take the reply or
+  the reason first. At the end of a pipeline of the state, use
+  `Shoddy.Tagging.reply_with/2` and `Shoddy.Tagging.stop_with/2`.
+- Import `Shoddy.Tagging` with the option `:only`. In a module that imports
+  `Plug.Conn`, do not import `Shoddy.Tagging.halt/1`.
+- `Shoddy.Maps.get_and_increment/3` returns the count after the addition,
+  and not the count before it. The result is `{count, map}`.
+- `Shoddy.Maps.get_or_put_lazy/3` also returns `{value, map}`. Keep the
+  map, or the new entry is lost.
+- `Shoddy.DateTimes.between?/3` excludes the last value of the period.
+  `Shoddy.DateTimes.within?/3` includes it, and it accepts `nil` for a
+  period with no end.
+- `Shoddy.MapSets.toggle/2` is for an event that asks for a change. For an
+  event that carries the new state, use `Shoddy.MapSets.put_or_delete/3`.
+- `Shoddy.Lists.index_by/3` raises `ArgumentError` if two elements have the
+  same key. The option `:on_duplicate` changes this.
+- `Shoddy.Strings.truncate/3` counts graphemes, for text that a person
+  reads. `Shoddy.Strings.truncate_bytes/2` counts bytes, and it is only for
+  text. For binary data that is not text, use `binary_slice/3`.
+- `Shoddy.Strings.upcase_first/1` keeps the rest of the string.
+  `String.capitalize/1` changes the rest to lower case.
+- `Shoddy.Strings.presence/1` changes only `""` to `nil`. For a field of a
+  form, use `Shoddy.Strings.non_blank/1`. It also returns `nil` for a
+  string of whitespace and for a value that is not a string.
+  `Shoddy.Strings.blank?/1` raises for a value that is not `nil` and not a
+  string.
+
+## Tests
+
+- Use `Shoddy.Tests` only in an ExUnit test. A release does not contain
+  ExUnit.
+- `Shoddy.Tests.suspend/1`, `Shoddy.Tests.put_app_env/3` and
+  `Shoddy.Tests.put_system_env/2` restore the old state at the end of the
+  test. Call them from the test process or from a `setup` callback.
+- Do not use `async: true` in a test module that calls
+  `Shoddy.Tests.put_app_env/3` or `Shoddy.Tests.put_system_env/2`.
+
+<!-- shoddy-end -->
+<!-- shoddy_phoenix-start -->
+## shoddy_phoenix usage
+_Small functions for tasks that occur frequently in Phoenix code._
+
+These rules give the correct use of each module of ShoddyPhoenix, and the
+mistakes to avoid.
+
+Read the documentation of a function before you use it. The source is in
+`deps/shoddy_phoenix/lib`, and the guides are in `deps/shoddy_phoenix/docs`.
+The site https://rellen.github.io/shoddy_phoenix/ has both.
+
+### Setup
+
+- ShoddyPhoenix is not on Hex. The dependency is
+  `{:shoddy_phoenix, github: "rellen/shoddy_phoenix"}`.
+- Each module below needs `phoenix_live_view`, version 1.2 or a later
+  version before 2.0. Without that dependency, the modules do not exist.
+- ShoddyPhoenix does not add Shoddy to a project. Do not call a function of
+  `Shoddy` unless `mix.exs` has `{:shoddy, github: "rellen/shoddy"}`.
+- Import `ShoddyPhoenix.ControlFlow` in the function `html_helpers/0` of
+  `lib/my_app_web.ex`.
+- Add `alias ShoddyPhoenix.LiveView` and `use ShoddyPhoenix.LiveView.Events`
+  to the function `live_view/0` of that file. Add the same `use` to
+  `live_component/0`.
+- If the application has a component with the same name, such as a
+  `switch/1`, import only the components that you use:
+  `import ShoddyPhoenix.ControlFlow, only: [choose: 1, result: 1]`.
+
+The examples below use the alias `LiveView` for `ShoddyPhoenix.LiveView`.
+
+### Templates: ShoddyPhoenix.ControlFlow
+
+| Component | What it renders |
+| --- | --- |
+| `ShoddyPhoenix.ControlFlow.choose/1` | The first `<:when>` with a truthy `test`, or `<:otherwise>` |
+| `ShoddyPhoenix.ControlFlow.switch/1` | The first `<:case>` with a `value` that is equal to the `value` of the component, or `<:otherwise>` |
+| `ShoddyPhoenix.ControlFlow.result/1` | `<:ok>` or `<:error>` for a result |
+| `ShoddyPhoenix.ControlFlow.wrap_if/1` | Its content, inside `<:wrapper>` only when `test` is truthy |
+| `ShoddyPhoenix.ControlFlow.each/1` | Its content for each item of `items`, or `<:empty>` |
+
+These rules apply to each component:
+
+- Only `nil` and `false` are falsy. `0`, `""` and `[]` are truthy.
+- A component with no slot that matches renders nothing. It does not raise.
+- A component adds no element and no whitespace. Write the list element or
+  the table element around the component.
+
+#### choose/1
+
+HEEx evaluates the `test` of each `<:when>` on each render, also after a
+truthy test. Do not write a test that is safe only after an earlier test:
+
+```heex
+<%!-- Wrong: the second test raises BadMapError for a nil user. --%>
+<.choose>
+  <:when test={is_nil(@user)}>Sign in</:when>
+  <:when test={@user.admin?}>Admin panel</:when>
+</.choose>
+```
+
+Each of these three forms is safe:
+
+```heex
+<:when test={@user && @user.admin?}>Admin panel</:when>
+<:when :if={@user} test={@user.admin?}>Admin panel</:when>
+<:when test={fn -> @user.admin? end}>Admin panel</:when>
+```
+
+- Keep each test cheap, and give it no side effects. Put expensive work into
+  an assign.
+- `:let` on a `<:when>` binds the value of its `test`.
+- Use `switch/1` when each test compares one value with a constant.
+
+#### switch/1
+
+- The component compares with `===`. Thus `1` and `1.0` are different.
+- Give each `<:case>` a literal value, such as `:loading`.
+
+#### result/1
+
+- The component accepts `{:ok, value}`, `:ok`, `{:error, reason}` and
+  `:error`. `:let` binds the value or the reason.
+- It raises `FunctionClauseError` for a value that is not a result, such as
+  `nil`. For a result that can be `nil`, write `:if={@save}` on the
+  component.
+- Do not render a reason that is a tuple, a map or a struct. Render a message
+  or a field of the reason.
+
+#### wrap_if/1
+
+The `<:wrapper>` must call `render_slot/1` one time with its `:let`
+argument. If it does not, the content disappears, and no error occurs:
+
+```heex
+<.wrap_if test={@user.profile_url}>
+  <:wrapper :let={content}><a href={@user.profile_url}>{render_slot(content)}</a></:wrapper>
+  {@user.name}
+</.wrap_if>
+```
+
+- A self-closing `<:wrapper />` raises `ArgumentError`.
+- If only an attribute differs, such as a `class`, give that attribute an
+  expression. Do not use `wrap_if/1`.
+
+#### each/1
+
+- Do not give a LiveView stream, such as `@streams.users`. The component
+  raises `ArgumentError`.
+- For a list that can be `nil`, write `items={@users || []}`.
+- The component tracks the items by position, and it cannot take `:key`.
+  For a long list that changes before its end, use `:for` with `:key`, and
+  show the empty state with `:if`.
+
+### Sockets: ShoddyPhoenix.LiveView
+
+A page request mounts a LiveView two times. The first mount has a socket that
+is not connected, and it runs in the process of the HTTP request. The second
+mount has a connected socket. A live navigation causes only the second mount.
+
+- `ShoddyPhoenix.LiveView.when_connected/2` applies a function to the socket
+  only when the socket is connected. Use it for a subscription or a timer.
+- The function must return the socket. Otherwise `when_connected/2` raises
+  `ArgumentError`. `Phoenix.PubSub.subscribe/2` returns `:ok`, so return the
+  socket after that call.
+- Subscribe first. Then read the state that the topic changes, and assign it.
+  The other order loses each change between the read and the subscription.
+- Do not put an assign that the template needs into the function. The first
+  mount does not call the function, and its render raises `KeyError`.
+
+```elixir
+def mount(_params, _session, socket) do
+  socket =
+    socket
+    |> LiveView.when_connected(&subscribe/1)
+    |> assign(:messages, MyApp.Messages.list_recent())
+
+  {:ok, socket}
+end
+
+defp subscribe(socket) do
+  Phoenix.PubSub.subscribe(MyApp.PubSub, "messages")
+  socket
+end
+```
+
+- A message can arrive for a change that the read already contains. Write
+  `handle_info/2` so that such a message changes nothing. For example,
+  replace an item by its id, and do not add it a second time.
+- `ShoddyPhoenix.LiveView.when_not_connected/2` applies a function only in
+  the first mount. Use it only to change the HTML of the HTTP response, for
+  example with `Phoenix.LiveView.render_with/2`. The second mount does not
+  get its assigns, and a live navigation does not call it.
+- `assign_async/4` and `start_async/4` start their task only for a connected
+  socket. Do not put them into `when_connected/2`.
+- `ShoddyPhoenix.LiveView.put_hook/4` attaches a lifecycle hook, and it
+  replaces a hook with the same id and stage. Use it in code that can run two
+  times, where `Phoenix.LiveView.attach_hook/4` raises.
+- `put_hook/4` puts a replaced hook at the end of its stage. If a hook of
+  that stage can halt, do not replace a hook after the first attachment.
+
+### Subscriptions: ShoddyPhoenix.LiveView.Subscriptions
+
+Use this module when more than one part of a LiveView needs one PubSub
+topic. An owner is a term that names one part, such as the key of a widget:
+
+```elixir
+socket
+|> Subscriptions.subscribe(MyApp.PubSub, "chat:lobby", :left_chat)
+|> Subscriptions.subscribe(MyApp.PubSub, "chat:lobby", :right_chat)
+```
+
+- `ShoddyPhoenix.LiveView.Subscriptions.subscribe/4` adds an owner. The
+  LiveView has one subscription to the topic, and it receives each message
+  one time.
+- `ShoddyPhoenix.LiveView.Subscriptions.unsubscribe/4` removes an owner. The
+  LiveView unsubscribes with the last owner.
+- Use this module for each subscription to that topic. Do not also call
+  `Phoenix.PubSub.subscribe/2` or `Phoenix.PubSub.unsubscribe/2` for it.
+- Both functions do nothing for a socket that is not connected. They need no
+  `when_connected/2`.
+- Do not give the socket of a LiveComponent. Both functions raise
+  `ArgumentError` for it.
+
+### Widgets: ShoddyPhoenix.LiveView.Widgets
+
+A widget is a part of a LiveView with its own state, events and messages. It
+keeps each instance as a struct in an assign of the LiveView. The guide is
+`deps/shoddy_phoenix/docs/how-to/build-a-widget-with-lifecycle-hooks.md`.
+
+- `ShoddyPhoenix.LiveView.Widgets.route_events/4` sends each event with a
+  name that starts with the name of the widget and a colon to a handler. For
+  the name `"chat"` and the event `"chat:send"`, the handler gets `"send"`.
+- A name is not empty, it has no colon, and it belongs to one module.
+- The handler returns `{:noreply, socket}` or `{:reply, map, socket}`.
+- Give the option `:actions` with the actions of the widget. The hook then
+  halts each other action, and a client cannot crash the LiveView with it.
+- Do not give the handler a last clause that accepts each action. Such a
+  clause stops the check of `ShoddyPhoenix.LiveView.Events`.
+- For a widget with instances, use
+  `ShoddyPhoenix.LiveView.Widgets.route_instance_events/5`. The handler gets
+  `{key, struct}` for the instance that the parameter `"instance"` names.
+  The hook halts an event that names no instance.
+- Do not convert a parameter of an event into an atom with
+  `String.to_existing_atom/1`. Use
+  `ShoddyPhoenix.LiveView.Widgets.fetch_instance/3`, which returns
+  `{:ok, {key, struct}}` or `:error`.
+- `ShoddyPhoenix.LiveView.Widgets.unroute_events/2` stops the events of a
+  name.
+
+```elixir
+def assign_widget(socket, key) do
+  socket
+  |> assign(key, %__MODULE__{key: key})
+  |> Widgets.route_instance_events("chat", __MODULE__, &handle_event/4, actions: ["send"])
+end
+
+defp handle_event("send", %{"message" => message}, {key, chat}, socket) do
+  {:noreply, assign(socket, key, %{chat | messages: [message | chat.messages]})}
+end
+```
+
+### Event names: ShoddyPhoenix.LiveView.Events
+
+After `use ShoddyPhoenix.LiveView.Events`, write each event name of a
+template with the macro `ShoddyPhoenix.LiveView.Events.event/1`:
+
+```heex
+<button phx-click={event("save")}>Save</button>
+<button phx-click={JS.push(event("delete"))}>Delete</button>
+```
+
+- The compiler gives a warning for a name with no clause of `handle_event/3`
+  in the module. With `mix compile --warnings-as-errors`, the warning stops
+  the compile.
+- To remove a warning, correct the name or add the clause. Do not add a
+  clause with a variable as its first argument. Such a clause stops the check
+  for the whole module.
+- `event/1` accepts only a literal string. It raises `ArgumentError` at the
+  compile time for a variable.
+- The check does not see a plain string, such as `phx-click="save"`. It also
+  does not see an event that JavaScript sends.
+- In a LiveComponent, use `event/1` only for an event with
+  `phx-target={@myself}`. Another event goes to the LiveView.
+- A function component in another module does not know the LiveView. Write
+  the name with `event/1` in the LiveView, and give it to the component as
+  an attribute.
+- For a widget, write `use ShoddyPhoenix.LiveView.Events, prefix: "chat"`.
+  Then `event("send")` returns `"chat:send"`, and the check looks for a
+  clause for `"send"` in `handle_event/3` or `handle_event/4`.
+- The prefix must be a literal string, not a module attribute. Give
+  `ShoddyPhoenix.LiveView.Events.event_prefix/0` to `route_events/4`, so the
+  name occurs one time.
+
+<!-- shoddy_phoenix-end -->
 <!-- ash-start -->
 ## ash usage
 _A declarative, extensible framework for building Elixir applications._
@@ -676,6 +1058,390 @@ Ash is an opinionated, composable framework for building applications in Elixir.
 
 
 <!-- ash-end -->
+<!-- ash_authentication-start -->
+## ash_authentication usage
+_Authentication extension for the Ash Framework._
+
+# AshAuthentication Usage Rules
+
+## Core Concepts
+- **Strategies**: password, OAuth2, magic_link, api_key authentication methods
+- **Tokens**: JWT for stateless authentication
+- **UserIdentity**: links users to OAuth2 providers
+- **Add-ons**: confirmation, logout-everywhere functionality
+- **Actions**: auto-generated by strategies (register, sign_in, etc.), can be overridden on the resource
+
+## Key Principles
+- Always use secrets management - never hardcode credentials
+- Enable tokens for magic_link, confirmation, OAuth2
+- UserIdentity resource required for all OAuth2/OIDC strategies (stores the provider's `iss`/`sub` claims; matching users by email is unsafe)
+- API keys require strict policy controls and expiration management
+- Use prefixes for API keys to enable secret scanning compliance
+- Check existing strategies: `AshAuthentication.Info.strategies/1`
+
+## Strategy Selection
+
+**Password** - Email/password authentication
+- Requires: `:email`, `:hashed_password` attributes, unique identity
+
+**Magic Link** - Passwordless email authentication
+- Requires: `:email` attribute, sender implementation, tokens enabled
+
+**API Key** - Token-based authentication for APIs
+- Requires: API key resource, relationship to user, sign-in action
+
+**OAuth2** - Social/enterprise login (GitHub, Google, Auth0, Apple, OIDC, Slack)
+- Requires: custom actions, secrets, UserIdentity resource
+
+## Password Strategy
+
+```elixir
+authentication do
+  strategies do
+    password :password do
+      identity_field :email
+      hashed_password_field :hashed_password
+      resettable do
+        sender MyApp.PasswordResetSender
+      end
+    end
+  end
+end
+
+# Required attributes:
+attributes do
+  attribute :email, :ci_string, allow_nil?: false, public?: true
+  attribute :hashed_password, :string, allow_nil?: false, sensitive?: true
+end
+
+identities do
+  identity :unique_email, [:email]
+end
+```
+
+## Magic Link Strategy
+
+```elixir
+authentication do
+  strategies do
+    magic_link do
+      identity_field :email
+      sender MyApp.MagicLinkSender
+    end
+  end
+end
+
+# Sender implementation required:
+defmodule MyApp.MagicLinkSender do
+  use AshAuthentication.Sender
+
+  def send(user_or_email, token, _opts) do
+    MyApp.Emails.deliver_magic_link(user_or_email, token)
+  end
+end
+```
+
+## API Key Strategy
+
+```elixir
+# 1. Create API key resource
+defmodule MyApp.Accounts.ApiKey do
+  use Ash.Resource,
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer]
+
+  actions do
+    defaults [:read, :destroy]
+
+    create :create do
+      primary? true
+      accept [:user_id, :expires_at]
+      change {AshAuthentication.Strategy.ApiKey.GenerateApiKey, prefix: :myapp, hash: :api_key_hash}
+    end
+  end
+
+  attributes do
+    uuid_primary_key :id
+    attribute :api_key_hash, :binary, allow_nil?: false, sensitive?: true
+    attribute :expires_at, :utc_datetime_usec, allow_nil?: false
+  end
+
+  relationships do
+    belongs_to :user, MyApp.Accounts.User, allow_nil?: false
+  end
+
+  calculations do
+    calculate :valid, :boolean, expr(expires_at > now())
+  end
+
+  identities do
+    identity :unique_api_key, [:api_key_hash]
+  end
+
+  policies do
+    bypass AshAuthentication.Checks.AshAuthenticationInteraction do
+      authorize_if always()
+    end
+  end
+end
+
+# 2. Add strategy to user resource
+authentication do
+  strategies do
+    api_key do
+      api_key_relationship :valid_api_keys
+      api_key_hash_attribute :api_key_hash
+    end
+  end
+end
+
+# 3. Add relationship to user
+relationships do
+  has_many :valid_api_keys, MyApp.Accounts.ApiKey do
+    filter expr(valid)
+  end
+end
+
+# 4. Add sign-in action to user
+actions do
+  read :sign_in_with_api_key do
+    argument :api_key, :string, allow_nil?: false
+    prepare AshAuthentication.Strategy.ApiKey.SignInPreparation
+  end
+end
+```
+
+**Security considerations:**
+- API keys are hashed for storage security
+- Use policies to restrict API key access to specific actions
+- Check `user.__metadata__[:using_api_key?]` to detect API key authentication
+- Access the API key via `user.__metadata__[:api_key]` for permission checks
+
+## OAuth2 Strategies
+
+**Supported providers:** github, google, auth0, apple, oidc, slack
+
+**Required for all OAuth2:**
+- Custom `register_with_[provider]` action
+- Secrets management
+- Tokens enabled
+- UserIdentity resource (stores the provider's `iss`/`sub` identity claims - matching users by email or other claims is unsafe)
+
+**How users are matched (sign-in and registration):**
+- Users are resolved by the `(strategy, sub)` identity, never by email. A provider identity belongs to exactly one local user, permanently.
+- A `sub` that has been seen before signs that user in.
+- A new `sub` whose email matches an existing account is only linked automatically when the provider's `email_verified` claim is trusted (`trust_email_verified?`). Otherwise the behaviour depends on `on_untrusted_email_match`.
+- `trust_email_verified?` defaults to `true` for GitHub/Google/Auth0/Slack/Apple and `false` elsewhere. Only enable it for providers that reliably assert email ownership.
+- `on_untrusted_email_match` controls the untrusted-email-matches-existing-account case: `:reject` (the default) refuses the sign-in (the user must sign in with their existing method to link the provider); `:confirm` issues a confirmation to the existing account's email and links the provider only once the recipient proves ownership by confirming. `:confirm` requires a `confirmation` add-on (enforced at compile time).
+- **Security note for `:confirm`**: confirming binds whatever provider identity initiated the flow, so the confirmation email must make clear *which* provider is being linked and that confirming grants it access — otherwise a user can be social-engineered into linking an attacker's provider account. The generated confirmation sender branches on `opts[:confirmation_type] == :identity_link` to produce this copy.
+
+### OAuth2 Configuration Pattern
+```elixir
+# Strategy configuration
+authentication do
+  strategies do
+    github do  # or google, auth0, apple, oidc, slack
+      client_id MyApp.Secrets
+      client_secret MyApp.Secrets
+      redirect_uri MyApp.Secrets
+      # auth0 also needs: base_url
+      # apple also needs: team_id, private_key_id, private_key_path
+      # oidc also needs: openid_configuration_uri
+      identity_resource MyApp.Accounts.UserIdentity
+    end
+  end
+end
+
+# Required action (replace 'github' with provider name)
+actions do
+  create :register_with_github do
+    argument :user_info, :map, allow_nil?: false
+    argument :oauth_tokens, :map, allow_nil?: false, sensitive?: true
+    upsert? true
+    upsert_identity :unique_email
+
+    change AshAuthentication.GenerateTokenChange
+
+    # Required: persists the provider's `iss`/`sub` identity claims
+    change AshAuthentication.Strategy.OAuth2.IdentityChange
+
+    change fn changeset, _ctx ->
+      user_info = Ash.Changeset.get_argument(changeset, :user_info)
+      Ash.Changeset.change_attributes(changeset, Map.take(user_info, ["email"]))
+    end
+  end
+end
+```
+
+## Add-ons
+
+### Confirmation
+```elixir
+authentication do
+  tokens do
+    enabled? true
+    token_resource MyApp.Accounts.Token
+  end
+
+  add_ons do
+    confirmation :confirm do
+      monitor_fields [:email]
+      sender MyApp.ConfirmationSender
+    end
+  end
+end
+```
+
+### Log Out Everywhere
+```elixir
+authentication do
+  tokens do
+    store_all_tokens? true
+  end
+
+  add_ons do
+    log_out_everywhere do
+      apply_on_password_change? true
+    end
+  end
+end
+```
+
+## Working with Authentication
+
+### Strategy Protocol
+```elixir
+# Get and use strategies
+strategy = AshAuthentication.Info.strategy!(MyApp.User, :password)
+{:ok, user} = AshAuthentication.Strategy.action(strategy, :sign_in, params)
+
+# List strategies
+strategies = AshAuthentication.Info.strategies(MyApp.User)
+```
+
+### Token Operations
+```elixir
+# User/subject conversion
+subject = AshAuthentication.user_to_subject(user)
+{:ok, user} = AshAuthentication.subject_to_user(subject, MyApp.User)
+
+# Token management
+AshAuthentication.TokenResource.revoke(MyApp.Token, token)
+```
+
+### Policies
+```elixir
+policies do
+  bypass AshAuthentication.Checks.AshAuthenticationInteraction do
+    authorize_if always()
+  end
+end
+```
+
+## Common Implementation Patterns
+
+### Pattern: Multiple Authentication Methods
+When users need multiple ways to authenticate:
+
+```elixir
+authentication do
+  tokens do
+    enabled? true
+    token_resource MyApp.Accounts.Token
+  end
+
+  strategies do
+    password :password do
+      identity_field :email
+      hashed_password_field :hashed_password
+    end
+
+    github do
+      client_id MyApp.Secrets
+      client_secret MyApp.Secrets
+      redirect_uri MyApp.Secrets
+      identity_resource MyApp.Accounts.UserIdentity
+    end
+
+    magic_link do
+      identity_field :email
+      sender MyApp.MagicLinkSender
+    end
+  end
+end
+```
+
+### Pattern: OAuth2 with User Registration
+When new users can register via OAuth2:
+
+```elixir
+actions do
+  create :register_with_github do
+    argument :user_info, :map, allow_nil?: false
+    argument :oauth_tokens, :map, allow_nil?: false, sensitive?: true
+    upsert? true
+    upsert_identity :email
+
+    change AshAuthentication.GenerateTokenChange
+    # Required: persists the provider's `iss`/`sub` identity claims
+    change AshAuthentication.Strategy.OAuth2.IdentityChange
+    change fn changeset, _ctx ->
+      user_info = Ash.Changeset.get_argument(changeset, :user_info)
+
+      changeset
+      |> Ash.Changeset.change_attribute(:email, user_info["email"])
+      |> Ash.Changeset.change_attribute(:name, user_info["name"])
+    end
+  end
+end
+```
+
+### Pattern: Custom Token Configuration
+When you need specific token behavior:
+
+```elixir
+authentication do
+  tokens do
+    enabled? true
+    token_resource MyApp.Accounts.Token
+    signing_secret MyApp.Secrets
+    token_lifetime {24, :hours}
+    store_all_tokens? true  # For logout-everywhere functionality
+    require_token_presence_for_authentication? false
+  end
+end
+```
+
+## Customizing Authentication Actions
+
+When customizing generated authentication actions (register, sign_in, etc.):
+
+**Key Security Rules:**
+- Always mark credentials with `sensitive?: true` (passwords, API keys, tokens)
+- Use `public?: false` for internal fields and highly sensitive PII
+- Use `public?: true` for identity fields and UI display data
+- Include required authentication changes (`GenerateTokenChange`, `HashPasswordChange`, etc.)
+
+**Argument Handling:**
+- All arguments must be used in `accept` or `change set_attribute()`
+- Use `allow_nil?: false` for required arguments
+- OAuth2 data must be extracted in changes, not accepted directly
+
+**Example Custom Registration:**
+```elixir
+create :register_with_password do
+  argument :password, :string, allow_nil?: false, sensitive?: true
+  argument :first_name, :string, allow_nil?: false
+  
+  accept [:email, :first_name]
+  
+  change AshAuthentication.GenerateTokenChange
+  change AshAuthentication.Strategy.Password.HashPasswordChange
+end
+```
+
+For more guidance, see the "Customizing Authentication Actions" section in the getting started guide.
+<!-- ash_authentication-end -->
 <!-- ash_phoenix-start -->
 ## ash_phoenix usage
 _Utilities for integrating Ash and Phoenix_
